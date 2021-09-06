@@ -16,3 +16,19 @@ resource "aws_route53_record" "certificate_validation" {
   type    = each.value.type
   zone_id = data.aws_route53_zone.this.id
 }
+
+resource "aws_route53_record" "root_a" {
+  count   = var.enable_alb ? 1 : 0
+  name    = data.aws_route53_zone.this.name
+  
+  # ALIAS レコードの場合、Aを指定
+  type    = "A"
+  zone_id = data.aws_route53_zone.this.zone_id
+
+  # ALIAS レコードの場合、alias ブロックを指定
+  alias {
+    evaluate_target_health = true
+    name                   = aws_lb.this[0].dns_name
+    zone_id                = aws_lb.this[0].zone_id
+  }
+}

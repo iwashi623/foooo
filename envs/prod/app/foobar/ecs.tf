@@ -23,8 +23,8 @@ resource "aws_ecs_task_definition" "this" {
   ]
   execution_role_arn = aws_iam_role.ecs_task_execution.arn
 
-  memory             = "512"
-  cpu                = "256"
+  memory = "512"
+  cpu    = "256"
 
   container_definitions = jsonencode(
     [
@@ -107,6 +107,54 @@ resource "aws_ecs_task_definition" "this" {
     name = "php-fpm-socket"
   }
 
+  tags = {
+    Name = "${local.name_prefix}-${local.service_name}"
+  }
+}
+
+resource "aws_ecs_service" "this" {
+  name    = "${local.name_prefix}-${local.service_name}"
+  cluster = aws_ecs_cluster.this.arn
+  capacity_provider_strategy {
+    capacity_provider = "FARGATE_SPOT"
+    base              = 0
+    weight            = 1
+  }
+  platform_version                   = "1.4.0"
+
+  # ECSサービスで使用するタスク定義のARN
+  task_definition                    = aws_ecs_task_definition.this.arn
+
+  # 起動させておくタスク数
+  desired_count                      = var.desired_count
+
+  # 全体で最低何個のタスクを起動
+  deployment_minimum_healthy_percent = 100
+
+  # ローリングアップデート時に全体で最大何個までタスクを起動
+  deployment_maximum_percent         = 200
+
+  # ロードバランサーがトラフィックをフォワードするコンテナ名とポート番号
+  load_balancer {
+    container_name   = "nginx"
+    container_port   = 80
+    target_group_arn = data.terraform_remote_state.routing_appfoobar_link.outputs.lb_target_group_foobar_arn
+  }
+
+  # ヘルスチェックで異常が出たとしても無視する猶予期間
+  health_check_grace_period_seconds = 60
+  network_configuration {
+    assign_public_ip = false
+    security_groups = [
+      data.terraform_remote_state.network_main.outputs.security_group_vpc_id
+    ]
+    subnets = [
+      for s in data.terraform_remote_state.network_main.outputs.subnet_private : s.id
+    ]
+  }
+
+  # ECS Exec
+  enable_execute_command = true
   tags = {
     Name = "${local.name_prefix}-${local.service_name}"
   }
